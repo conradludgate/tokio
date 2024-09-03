@@ -54,6 +54,9 @@ pub(crate) struct WorkerMetrics {
 
     /// Thread id of worker thread.
     thread_id: Mutex<Option<ThreadId>>,
+
+    /// Thread id of worker thread.
+    pthread_id: Mutex<Option<libc::pthread_t>>,
 }
 
 impl WorkerMetrics {
@@ -84,5 +87,13 @@ impl WorkerMetrics {
 
     pub(crate) fn set_thread_id(&self, thread_id: ThreadId) {
         *self.thread_id.lock().unwrap() = Some(thread_id);
+    }
+
+    pub(crate) fn pthread_id(&self) -> Option<libc::pthread_t> {
+        *self.pthread_id.lock().unwrap()
+    }
+
+    pub(crate) fn set_pthread_id(&self, pthread_id: libc::pthread_t) {
+        *self.pthread_id.lock().unwrap() = Some(pthread_id);
     }
 }

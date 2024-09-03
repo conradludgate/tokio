@@ -171,6 +171,14 @@ impl RuntimeMetrics {
                 .thread_id()
         }
 
+        /// For tokio-supervisor
+        pub fn worker_pthread_id(&self, worker: usize) -> Option<libc::pthread_t> {
+            self.handle
+                .inner
+                .worker_metrics(worker)
+                .pthread_id()
+        }
+
         cfg_64bit_metrics! {
             /// Returns the number of tasks spawned in this runtime since it was created.
             ///

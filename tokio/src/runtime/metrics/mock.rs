@@ -33,6 +33,7 @@ impl WorkerMetrics {
 
     pub(crate) fn set_queue_depth(&self, _len: usize) {}
     pub(crate) fn set_thread_id(&self, _thread_id: ThreadId) {}
+    pub(crate) fn set_pthread_id(&self, _pthread_id: libc::pthread_t) {}
 }
 
 impl MetricsBatch {

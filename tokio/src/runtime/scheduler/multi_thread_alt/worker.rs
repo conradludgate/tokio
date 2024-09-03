@@ -574,6 +574,7 @@ impl Worker {
         };
 
         cx.shared().worker_metrics[core.index].set_thread_id(thread::current().id());
+        cx.shared().worker_metrics[core.index].set_pthread_id(unsafe { libc::pthread_self() });
         core.stats.start_processing_scheduled_tasks(&mut self.stats);
 
         if let Some(task) = maybe_task {

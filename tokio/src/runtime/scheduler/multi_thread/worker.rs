@@ -343,6 +343,8 @@ where
                         if core.is_some() {
                             cx.worker.handle.shared.worker_metrics[cx.worker.index]
                                 .set_thread_id(thread::current().id());
+                            cx.worker.handle.shared.worker_metrics[cx.worker.index]
+                                .set_pthread_id(unsafe { libc::pthread_self() });
                         }
 
                         let mut cx_core = cx.core.borrow_mut();
@@ -494,6 +496,7 @@ fn run(worker: Arc<Worker>) {
     };
 
     worker.handle.shared.worker_metrics[worker.index].set_thread_id(thread::current().id());
+    worker.handle.shared.worker_metrics[worker.index].set_pthread_id(unsafe { libc::pthread_self() });
 
     let handle = scheduler::Handle::MultiThread(worker.handle.clone());
 

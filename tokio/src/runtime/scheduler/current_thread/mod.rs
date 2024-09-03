@@ -131,6 +131,7 @@ impl CurrentThread {
     ) -> (CurrentThread, Arc<Handle>) {
         let worker_metrics = WorkerMetrics::from_config(&config);
         worker_metrics.set_thread_id(thread::current().id());
+        worker_metrics.set_pthread_id(unsafe { libc::pthread_self() });
 
         // Get the configured global queue interval, or use the default.
         let global_queue_interval = config
@@ -188,6 +189,10 @@ impl CurrentThread {
                         .shared
                         .worker_metrics
                         .set_thread_id(thread::current().id());
+                    handle
+                        .shared
+                        .worker_metrics
+                        .set_pthread_id(unsafe { libc::pthread_self() });
                     return core.block_on(future);
                 } else {
                     let notified = self.notify.notified();
