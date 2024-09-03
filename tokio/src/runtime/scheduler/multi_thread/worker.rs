@@ -58,6 +58,7 @@
 
 use crate::loom::sync::{Arc, Mutex};
 use crate::runtime;
+use crate::runtime::metrics::WorkerThread;
 use crate::runtime::scheduler::multi_thread::{
     idle, queue, Counters, Handle, Idle, Overflow, Parker, Stats, TraceStatus, Unparker,
 };
@@ -72,7 +73,6 @@ use crate::util::rand::{FastRand, RngSeedGenerator};
 
 use std::cell::RefCell;
 use std::task::Waker;
-use std::thread;
 use std::time::Duration;
 
 cfg_unstable_metrics! {
@@ -342,9 +342,7 @@ where
 
                         if core.is_some() {
                             cx.worker.handle.shared.worker_metrics[cx.worker.index]
-                                .set_thread_id(thread::current().id());
-                            cx.worker.handle.shared.worker_metrics[cx.worker.index]
-                                .set_pthread_id(unsafe { libc::pthread_self() });
+                                .set_thread(WorkerThread::current());
                         }
 
                         let mut cx_core = cx.core.borrow_mut();
@@ -495,8 +493,7 @@ fn run(worker: Arc<Worker>) {
         None => return,
     };
 
-    worker.handle.shared.worker_metrics[worker.index].set_thread_id(thread::current().id());
-    worker.handle.shared.worker_metrics[worker.index].set_pthread_id(unsafe { libc::pthread_self() });
+    worker.handle.shared.worker_metrics[worker.index].set_thread(WorkerThread::current());
 
     let handle = scheduler::Handle::MultiThread(worker.handle.clone());
 

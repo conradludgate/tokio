@@ -53,10 +53,7 @@ pub(crate) struct WorkerMetrics {
     pub(super) poll_count_histogram: Option<Histogram>,
 
     /// Thread id of worker thread.
-    thread_id: Mutex<Option<ThreadId>>,
-
-    /// Thread id of worker thread.
-    pthread_id: Mutex<Option<libc::pthread_t>>,
+    thread: Mutex<Option<WorkerThread>>,
 }
 
 impl WorkerMetrics {
@@ -81,19 +78,37 @@ impl WorkerMetrics {
         self.queue_depth.store(len, Relaxed);
     }
 
-    pub(crate) fn thread_id(&self) -> Option<ThreadId> {
-        *self.thread_id.lock().unwrap()
+    pub(crate) fn thread(&self) -> Option<WorkerThread> {
+        *self.thread.lock().unwrap()
     }
 
-    pub(crate) fn set_thread_id(&self, thread_id: ThreadId) {
-        *self.thread_id.lock().unwrap() = Some(thread_id);
+    pub(crate) fn set_thread(&self, thread: WorkerThread) {
+        *self.thread.lock().unwrap() = Some(thread);
     }
+}
 
-    pub(crate) fn pthread_id(&self) -> Option<libc::pthread_t> {
-        *self.pthread_id.lock().unwrap()
-    }
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct WorkerThread {
+    pub(crate) thread_id: ThreadId,
 
-    pub(crate) fn set_pthread_id(&self, pthread_id: libc::pthread_t) {
-        *self.pthread_id.lock().unwrap() = Some(pthread_id);
+    #[cfg(all(tokio_unstable, unix))]
+    pub(crate) pthread_id: libc::pthread_t,
+}
+
+impl WorkerThread {
+    pub(crate) fn current() -> Self {
+        Self {
+            thread_id: std::thread::current().id(),
+
+            #[cfg(all(tokio_unstable, unix))]
+            pthread_id: {
+                std::thread_local! {
+                    // Storing the pthread in a thread local once cell was measurably faster in my testing.
+                    // perhaps the entire WorkerThread struct should be in one thread local once cell.
+                    static PTHREAD: std::cell::OnceCell<libc::pthread_t> = const { std::cell::OnceCell::new() };
+                }
+                PTHREAD.with(|c| *c.get_or_init(|| unsafe { libc::pthread_self() }))
+            },
+        }
     }
 }

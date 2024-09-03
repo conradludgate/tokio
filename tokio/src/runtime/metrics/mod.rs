@@ -25,7 +25,7 @@ cfg_unstable_metrics! {
     pub(crate) use scheduler::SchedulerMetrics;
 
     mod worker;
-    pub(crate) use worker::WorkerMetrics;
+    pub(crate) use worker::{WorkerMetrics, WorkerThread};
 
     cfg_net! {
         mod io;
@@ -36,5 +36,5 @@ cfg_unstable_metrics! {
 cfg_not_unstable_metrics! {
     mod mock;
 
-    pub(crate) use mock::{SchedulerMetrics, WorkerMetrics, MetricsBatch, HistogramBuilder};
+    pub(crate) use mock::{SchedulerMetrics, WorkerMetrics, WorkerThread, MetricsBatch, HistogramBuilder};
 }

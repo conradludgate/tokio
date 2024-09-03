@@ -168,15 +168,54 @@ impl RuntimeMetrics {
             self.handle
                 .inner
                 .worker_metrics(worker)
-                .thread_id()
+                .thread()
+                .map(|t| t.thread_id)
         }
 
-        /// For tokio-supervisor
-        pub fn worker_pthread_id(&self, worker: usize) -> Option<libc::pthread_t> {
-            self.handle
-                .inner
-                .worker_metrics(worker)
-                .pthread_id()
+        cfg_unix!{
+            /// Returns the pthread id of the given worker thread.
+            ///
+            /// The returned value is `None` if the worker thread has not yet finished
+            /// starting up.
+            ///
+            /// If additional information about the thread are
+            /// required, those can be collected in [`on_thread_start`] and correlated
+            /// using the thread id.
+            ///
+            /// [`on_thread_start`]: crate::runtime::Builder::on_thread_start
+            ///
+            /// # Arguments
+            ///
+            /// `worker` is the index of the worker being queried. The given value must
+            /// be between 0 and `num_workers()`. The index uniquely identifies a single
+            /// worker and will continue to identify the worker throughout the lifetime
+            /// of the runtime instance.
+            ///
+            /// # Panics
+            ///
+            /// The method panics when `worker` represents an invalid worker, i.e. is
+            /// greater than or equal to `num_workers()`.
+            ///
+            /// # Examples
+            ///
+            /// ```
+            /// use tokio::runtime::Handle;
+            ///
+            /// #[tokio::main]
+            /// async fn main() {
+            ///     let metrics = Handle::current().metrics();
+            ///
+            ///     let id = metrics.worker_pthread_id(0);
+            ///     println!("worker 0 has id {:?}", id);
+            /// }
+            /// ```
+            pub fn worker_pthread_id(&self, worker: usize) -> Option<libc::pthread_t> {
+                self.handle
+                    .inner
+                    .worker_metrics(worker)
+                    .thread()
+                    .map(|t| t.pthread_id)
+            }
         }
 
         cfg_64bit_metrics! {
