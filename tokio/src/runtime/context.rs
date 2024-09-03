@@ -6,6 +6,8 @@ use std::cell::Cell;
 #[cfg(any(feature = "rt", feature = "macros", feature = "time"))]
 use crate::util::rand::FastRand;
 
+use super::scheduler::multi_thread::BUDGET_RESET;
+
 cfg_rt! {
     mod blocking;
     pub(crate) use blocking::{disallow_block_in_place, try_enter_blocking_region, BlockingRegionGuard};
@@ -30,7 +32,7 @@ cfg_rt! {
 
 cfg_rt_multi_thread! {
     mod runtime_mt;
-    pub(crate) use runtime_mt::{current_enter_context, exit_runtime};
+    pub(crate) use runtime_mt::{current_enter_context, exit_runtime, Reset as MtReset};
 }
 
 struct Context {
@@ -136,6 +138,7 @@ pub(crate) fn thread_rng_n(n: u32) -> u32 {
 }
 
 pub(super) fn budget<R>(f: impl FnOnce(&Cell<coop::Budget>) -> R) -> Result<R, AccessError> {
+    BUDGET_RESET.with(|s| s.set(None));
     CONTEXT.try_with(|ctx| f(&ctx.budget))
 }
 

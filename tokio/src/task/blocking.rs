@@ -77,6 +77,13 @@ cfg_rt_multi_thread! {
     {
         crate::runtime::scheduler::block_in_place(f)
     }
+
+    /// moves the worker core to another thread temporarily.
+    #[doc(hidden)]
+    pub fn unblock_thread()
+    {
+        crate::runtime::scheduler::multi_thread::block_in_place2()
+    }
 }
 
 cfg_rt! {

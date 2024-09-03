@@ -70,7 +70,7 @@ use crate::runtime::{context, TaskHooks};
 use crate::util::atomic_cell::AtomicCell;
 use crate::util::rand::{FastRand, RngSeedGenerator};
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::task::Waker;
 use std::thread;
 use std::time::Duration;
@@ -322,44 +322,47 @@ pub(super) fn create(
     (handle, launch)
 }
 
-#[track_caller]
-pub(crate) fn block_in_place<F, R>(f: F) -> R
-where
-    F: FnOnce() -> R,
-{
-    // Try to steal the worker core back
-    struct Reset {
-        take_core: bool,
-        budget: coop::Budget,
-    }
+// Try to steal the worker core back
+pub(crate) struct Reset {
+    _enter: runtime::context::MtReset,
+    _core: Reset2,
+}
 
-    impl Drop for Reset {
-        fn drop(&mut self) {
-            with_current(|maybe_cx| {
-                if let Some(cx) = maybe_cx {
-                    if self.take_core {
-                        let core = cx.worker.core.take();
+// Try to steal the worker core back
+pub(crate) struct Reset2 {
+    take_core: bool,
+    budget: coop::Budget,
+}
 
-                        if core.is_some() {
-                            cx.worker.handle.shared.worker_metrics[cx.worker.index]
-                                .set_thread_id(thread::current().id());
-                            cx.worker.handle.shared.worker_metrics[cx.worker.index]
-                                .set_pthread_id(unsafe { libc::pthread_self() });
-                        }
+impl Drop for Reset2 {
+    fn drop(&mut self) {
+        with_current(|maybe_cx| {
+            if let Some(cx) = maybe_cx {
+                if self.take_core {
+                    let core = cx.worker.core.take();
 
-                        let mut cx_core = cx.core.borrow_mut();
-                        assert!(cx_core.is_none());
-                        *cx_core = core;
+                    if core.is_some() {
+                        cx.worker.handle.shared.worker_metrics[cx.worker.index]
+                            .set_thread_id(thread::current().id());
+                        cx.worker.handle.shared.worker_metrics[cx.worker.index]
+                            .set_pthread_id(unsafe { libc::pthread_self() });
                     }
 
-                    // Reset the task budget as we are re-entering the
-                    // runtime.
-                    coop::set(self.budget);
+                    let mut cx_core = cx.core.borrow_mut();
+                    assert!(cx_core.is_none());
+                    *cx_core = core;
                 }
-            });
-        }
-    }
 
+                // Reset the task budget as we are re-entering the
+                // runtime.
+                coop::set(self.budget);
+            }
+        });
+    }
+}
+
+#[track_caller]
+pub(crate) fn block_in_place_inner() -> Option<Reset> {
     let mut had_entered = false;
     let mut take_core = false;
 
@@ -451,15 +454,38 @@ where
     if had_entered {
         // Unset the current task's budget. Blocking sections are not
         // constrained by task budgets.
-        let _reset = Reset {
+        let reset = Reset2 {
             take_core,
             budget: coop::stop(),
         };
 
-        crate::runtime::context::exit_runtime(f)
+        Some(Reset {
+            _enter: runtime::context::MtReset::new(),
+            _core: reset,
+        })
     } else {
-        f()
+        None
     }
+}
+
+tokio_thread_local! {
+    pub(crate) static BUDGET_RESET: Cell<Option<Reset>> = Cell::new(None);
+}
+
+#[track_caller]
+pub(crate) fn block_in_place2() {
+    if let Some(reset) = block_in_place_inner() {
+        BUDGET_RESET.with(|r| r.set(Some(reset)));
+    }
+}
+
+#[track_caller]
+pub(crate) fn block_in_place<F, R>(f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    let _reset = block_in_place_inner();
+    f()
 }
 
 impl Launch {
@@ -496,7 +522,8 @@ fn run(worker: Arc<Worker>) {
     };
 
     worker.handle.shared.worker_metrics[worker.index].set_thread_id(thread::current().id());
-    worker.handle.shared.worker_metrics[worker.index].set_pthread_id(unsafe { libc::pthread_self() });
+    worker.handle.shared.worker_metrics[worker.index]
+        .set_pthread_id(unsafe { libc::pthread_self() });
 
     let handle = scheduler::Handle::MultiThread(worker.handle.clone());
 
@@ -599,6 +626,8 @@ impl Context {
         // Run the task
         coop::budget(|| {
             task.run();
+            BUDGET_RESET.with(|s| s.set(None));
+
             let mut lifo_polls = 0;
 
             // As long as there is budget remaining and a task exists in the

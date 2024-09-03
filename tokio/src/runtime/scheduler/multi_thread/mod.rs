@@ -35,7 +35,7 @@ cfg_not_taskdump! {
     use trace_mock::TraceStatus;
 }
 
-pub(crate) use worker::block_in_place;
+pub(crate) use worker::{block_in_place, block_in_place2, BUDGET_RESET};
 
 use crate::loom::sync::Arc;
 use crate::runtime::{

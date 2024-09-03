@@ -332,6 +332,7 @@ cfg_rt! {
 
     cfg_rt_multi_thread! {
         pub use blocking::block_in_place;
+        pub use blocking::unblock_thread;
     }
 
     mod yield_now;
