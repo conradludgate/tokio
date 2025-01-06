@@ -1,6 +1,6 @@
 #![allow(unknown_lints, unexpected_cfgs)]
 #![warn(rust_2018_idioms)]
-#![cfg(all(feature = "rt", tokio_unstable))]
+#![cfg(feature = "rt")]
 
 use tokio::sync::oneshot;
 use tokio::time::Duration;
