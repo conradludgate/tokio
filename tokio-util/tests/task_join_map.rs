@@ -1,6 +1,6 @@
 #![allow(unknown_lints, unexpected_cfgs)]
 #![warn(rust_2018_idioms)]
-#![cfg(feature = "rt")]
+#![cfg(feature = "join-map")]
 
 use tokio::sync::oneshot;
 use tokio::time::Duration;
