@@ -278,19 +278,14 @@ fn instant_to_tick_max() {
 fn proptest() {
     use std::future::Future;
 
-    use futures_testing::{self, Driver, TestCase};
+    use futures_testing::{self, drive_fn, Driver, TestCase};
 
-    use crate::runtime::Runtime;
     struct Test;
 
-    impl TestCase<'_> for Test {
-        type Future<'a> = TimeFuture;
-
-        type Driver<'a> = TimerDriver;
-
+    impl<'b> TestCase<'b> for Test {
         type Args = u64;
 
-        fn init<'a>(&self, args: &'a mut u64) -> (Self::Driver<'a>, Self::Future<'a>) {
+        fn init<'a>(&self, args: &'a mut u64) -> (impl Driver<'b>, impl Future) {
             let runtime = rt(true);
             let handle = runtime.handle();
 
@@ -299,7 +294,14 @@ fn proptest() {
                 handle.inner.driver().clock().now() + Duration::from_nanos(*args),
             );
 
-            (TimerDriver { runtime }, TimeFuture { entry })
+            let driver = drive_fn(move |ns: u64| {
+                let driver = runtime.handle().inner.driver();
+                let clock = driver.clock();
+                clock.advance(Duration::from_nanos(ns)).unwrap();
+                driver.time().process(clock);
+            });
+
+            (driver, TimeFuture { entry })
         }
     }
 
@@ -315,21 +317,6 @@ fn proptest() {
             cx: &mut Context<'_>,
         ) -> std::task::Poll<Self::Output> {
             self.project().entry.poll_elapsed(cx)
-        }
-    }
-
-    struct TimerDriver {
-        runtime: Runtime,
-    }
-
-    impl Driver<'_> for TimerDriver {
-        type Args = u64;
-
-        fn poll(&mut self, step: u64) {
-            let driver = self.runtime.handle().inner.driver();
-            let clock = driver.clock();
-            clock.advance(Duration::from_nanos(step)).unwrap();
-            driver.time().process(clock);
         }
     }
 
