@@ -276,7 +276,7 @@ fn instant_to_tick_max() {
 #[test]
 #[cfg(not(loom))]
 fn proptest() {
-    use std::future::Future;
+    use std::future::{poll_fn, Future};
 
     use futures_testing::{self, drive_fn, Driver, TestCase};
 
@@ -301,22 +301,12 @@ fn proptest() {
                 driver.time().process(clock);
             });
 
-            (driver, TimeFuture { entry })
-        }
-    }
+            let future = async move {
+                pin!(entry);
+                poll_fn(move |cx| entry.as_mut().poll_elapsed(cx)).await
+            };
 
-    pin_project_lite::pin_project! {
-        struct TimeFuture{ #[pin] entry: TimerEntry }
-    }
-
-    impl Future for TimeFuture {
-        type Output = Result<(), super::Error>;
-
-        fn poll(
-            self: std::pin::Pin<&mut Self>,
-            cx: &mut Context<'_>,
-        ) -> std::task::Poll<Self::Output> {
-            self.project().entry.poll_elapsed(cx)
+            (driver, future)
         }
     }
 
