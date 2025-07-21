@@ -4,7 +4,7 @@ use std::borrow::Borrow;
 use std::collections::hash_map::RandomState;
 use std::fmt;
 use std::future::Future;
-use std::hash::{BuildHasher, Hash, Hasher};
+use std::hash::{BuildHasher, BuildHasherDefault, Hash, Hasher};
 use std::marker::PhantomData;
 use tokio::runtime::Handle;
 use tokio::task::{AbortHandle, Id, JoinError, JoinSet, LocalSet};
@@ -105,6 +105,7 @@ pub struct JoinMap<K, V, S = RandomState> {
     /// A map of the [`AbortHandle`]s of the tasks spawned on this `JoinMap`,
     /// indexed by their keys.
     tasks_by_key: HashTable<(K, AbortHandle)>,
+    hasher: S,
 
     /// A map from task IDs to the hash of the key associated with that task.
     ///
@@ -113,7 +114,7 @@ pub struct JoinMap<K, V, S = RandomState> {
     /// ID is provided to us by the `JoinSet`, so we can look up the hash value
     /// of that task's key, and then remove it from the `tasks_by_key` map using
     /// the raw hash code, resolving collisions by comparing task IDs.
-    hashes_by_task: HashMap<Id, u64, S>,
+    hashes_by_task: HashMap<Id, u64, BuildHasherDefault<FibonaciiHasher>>,
 
     /// The [`JoinSet`] that awaits the completion of tasks spawned on this
     /// `JoinMap`.
@@ -207,7 +208,11 @@ impl<K, V, S> JoinMap<K, V, S> {
     pub fn with_capacity_and_hasher(capacity: usize, hash_builder: S) -> Self {
         Self {
             tasks_by_key: HashTable::with_capacity(capacity),
-            hashes_by_task: HashMap::with_capacity_and_hasher(capacity, hash_builder),
+            hasher: hash_builder,
+            hashes_by_task: HashMap::with_capacity_and_hasher(
+                capacity,
+                BuildHasherDefault::default(),
+            ),
             tasks: JoinSet::new(),
         }
     }
@@ -396,14 +401,13 @@ where
     }
 
     fn insert(&mut self, mut key: K, mut abort: AbortHandle) {
-        let hash_builder = self.hashes_by_task.hasher();
-        let hash = hash_one(hash_builder, &key);
+        let hash = hash_one(&self.hasher, &key);
         let id = abort.id();
 
         // Insert the new key into the map of tasks by keys.
         let entry =
             self.tasks_by_key
-                .entry(hash, |(k, _)| *k == key, |(k, _)| hash_one(hash_builder, k));
+                .entry(hash, |(k, _)| *k == key, |(k, _)| hash_one(&self.hasher, k));
         match entry {
             Entry::Occupied(occ) => {
                 // There was a previous task spawned with the same key! Cancel
@@ -679,9 +683,8 @@ where
     /// ```
     #[inline]
     pub fn reserve(&mut self, additional: usize) {
-        let hash_builder = self.hashes_by_task.hasher();
         self.tasks_by_key
-            .reserve(additional, |(k, _)| hash_one(hash_builder, k));
+            .reserve(additional, |(k, _)| hash_one(&self.hasher, k));
         self.hashes_by_task.reserve(additional);
     }
 
@@ -707,9 +710,8 @@ where
     #[inline]
     pub fn shrink_to_fit(&mut self) {
         self.hashes_by_task.shrink_to_fit();
-        let hash_builder = self.hashes_by_task.hasher();
         self.tasks_by_key
-            .shrink_to_fit(|(k, _)| hash_one(hash_builder, k));
+            .shrink_to_fit(|(k, _)| hash_one(&self.hasher, k));
     }
 
     /// Shrinks the capacity of the map with a lower limit. It will drop
@@ -738,9 +740,8 @@ where
     #[inline]
     pub fn shrink_to(&mut self, min_capacity: usize) {
         self.hashes_by_task.shrink_to(min_capacity);
-        let hash_builder = self.hashes_by_task.hasher();
         self.tasks_by_key
-            .shrink_to(min_capacity, |(k, _)| hash_one(hash_builder, k))
+            .shrink_to(min_capacity, |(k, _)| hash_one(&self.hasher, k))
     }
 
     /// Look up a task in the map by its key, returning the key and abort handle.
@@ -749,8 +750,7 @@ where
         Q: Hash + Eq,
         K: Borrow<Q>,
     {
-        let hash_builder = self.hashes_by_task.hasher();
-        let hash = hash_one(hash_builder, key);
+        let hash = hash_one(&self.hasher, key);
         self.tasks_by_key.find(hash, |(k, _)| k.borrow() == key)
     }
 
@@ -867,3 +867,24 @@ impl<'a, K, V> ExactSizeIterator for JoinMapKeys<'a, K, V> {
 }
 
 impl<'a, K, V> std::iter::FusedIterator for JoinMapKeys<'a, K, V> {}
+
+#[derive(Default)]
+struct FibonaciiHasher(u64);
+
+const FIB: u64 = 11400714819323198485;
+impl std::hash::Hasher for FibonaciiHasher {
+    fn write(&mut self, _: &[u8]) {
+        unreachable!("Task ID is a u64 internally");
+    }
+    #[inline]
+    fn write_u64(&mut self, x: u64) {
+        let x = x as u128;
+        let y = FIB as u128;
+        let z = x * y;
+        self.0 = (z >> 64) as u64 ^ z as u64;
+    }
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
