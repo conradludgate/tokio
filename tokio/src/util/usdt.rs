@@ -13,7 +13,7 @@ cfg_rt! {
         #[inline]
         pub(crate) fn task<F>(task: F, kind: &'static str, meta: SpawnMeta<'_>, id: u64) -> Instrumented<F> {
             fn probe(kind: &'static str, meta: SpawnMeta<'_>, id: u64, size: usize) {
-                probes::task__start!(|| (
+                probes::task__start_eager!(|| (
                     id,
                     (kind == "task") as u8,
                     size,
@@ -47,7 +47,7 @@ cfg_rt! {
             impl<F> PinnedDrop for Instrumented<F> {
                 fn drop(this: Pin<&mut Self>) {
                     let this = this.project();
-                    probes::task__terminate!(|| *this.task_id);
+                    probes::task__terminate_eager!(|| *this.task_id);
                 }
             }
         }
@@ -57,9 +57,9 @@ cfg_rt! {
 
             fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
                 let this = self.project();
-                probes::task__poll__start!(|| *this.task_id);
+                probes::task__poll__start_eager!(|| *this.task_id);
                 let res = this.inner.poll(cx);
-                probes::task__poll__end!(|| *this.task_id);
+                probes::task__poll__end_eager!(|| *this.task_id);
                 res
             }
         }
