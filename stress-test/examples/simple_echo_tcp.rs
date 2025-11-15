@@ -13,8 +13,8 @@ const NUM_MSGS: usize = 100;
 const MSG_SIZE: usize = 1024;
 
 fn main() {
-    let rt = Builder::new_multi_thread().enable_io().build().unwrap();
-    let rt2 = Builder::new_multi_thread().enable_io().build().unwrap();
+    let rt = Builder::new_current_thread().enable_io().build().unwrap();
+    let rt2 = Builder::new_current_thread().enable_io().build().unwrap();
 
     rt.spawn(async {
         let listener = TcpListener::bind(TCP_ENDPOINT).await.unwrap();

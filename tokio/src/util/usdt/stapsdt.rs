@@ -44,7 +44,7 @@ macro_rules! call_probe {
             // they reference are GCd. This causes notes to have incorrect addresses.
             //
             // Ideally we'd use `"?"` but that's not working correctly.
-                    ".pushsection .note.stapsdt, \"R\", \"note\"
+                    ".pushsection .note.stapsdt, \"\", \"note\"
                     .balign 4
                     .4byte 992f-991f, 994f-993f, 3
             991:
@@ -86,7 +86,7 @@ macro_rules! call_probe {
             // they reference are GCd. This causes notes to have incorrect addresses.
             //
             // Ideally we'd use `"?"` but that's not working correctly.
-                    ".pushsection .note.stapsdt, \"R\", \"note\"
+                    ".pushsection .note.stapsdt, \"\", \"note\"
                     .balign 4
                     .4byte 992f-991f, 994f-993f, 3
             991:
@@ -133,52 +133,52 @@ macro_rules! declare_semaphore {
 }
 
 cfg_rt!(
-    declare_semaphore!(__usdt_sema_tokio_task__details);
+    // declare_semaphore!(__usdt_sema_tokio_task__details);
 
     // `inline(always)` is ok here since we only inline into `super::start_task` which is `inline(never)`
     #[inline(always)]
-    pub(super) fn task_details(task_id: u64, name: &str, file: &str, line: u32, col: u32) {
-        #[cold]
-        fn task_details_inner(task_id: u64, name: &str, file: &str, line: u32, col: u32) {
-            // add nul bytes
-            let name0 = [name.as_bytes(), b"\0"].concat();
-            let file0 = [file.as_bytes(), b"\0"].concat();
+    pub(super) fn task_details(_task_id: u64, _name: &str, _file: &str, _line: u32, _col: u32) {
+        // #[cold]
+        // fn task_details_inner(task_id: u64, name: &str, file: &str, line: u32, col: u32) {
+        //     // add nul bytes
+        //     let name0 = [name.as_bytes(), b"\0"].concat();
+        //     let file0 = [file.as_bytes(), b"\0"].concat();
 
-            unsafe {
-                call_probe!(
-                    "task-details",
-                    x86_64: "8@{task_id:r} 8@{name} 8@{file} 4@{line:e} 4@{col:e}",
-                    aarch64: "8@{task_id} 8@{name} 8@{file} 4@{line:w} 4@{col:w}",
-                    semaphore = sym __usdt_sema_tokio_task__details,
-                    task_id = in(reg) task_id,
-                    name = in(reg) name0.as_ptr(),
-                    file = in(reg) file0.as_ptr(),
-                    line = in(reg) line,
-                    col = in(reg) col,
-                );
-            }
-        }
+        //     unsafe {
+        //         call_probe!(
+        //             "task-details",
+        //             x86_64: "8@{task_id:r} 8@{name} 8@{file} 4@{line:e} 4@{col:e}",
+        //             aarch64: "8@{task_id} 8@{name} 8@{file} 4@{line:w} 4@{col:w}",
+        //             semaphore = sym __usdt_sema_tokio_task__details,
+        //             task_id = in(reg) task_id,
+        //             name = in(reg) name0.as_ptr(),
+        //             file = in(reg) file0.as_ptr(),
+        //             line = in(reg) line,
+        //             col = in(reg) col,
+        //         );
+        //     }
+        // }
 
-        if unsafe { __usdt_sema_tokio_task__details } != 0 {
-            task_details_inner(task_id, name, file, line, col);
-        }
+        // if unsafe { __usdt_sema_tokio_task__details } != 0 {
+        //     task_details_inner(task_id, name, file, line, col);
+        // }
     }
 
     // `inline(always)` is ok here since we only inline into `super::start_task` which is `inline(never)`
     #[inline(always)]
-    pub(super) fn task_start(task_id: u64, kind: u8, size: usize, original_size: usize) {
-        unsafe {
-            call_probe!(
-                "task-start",
-                x86_64: "8@{task_id:r} 1@{kind:l} 8@{size} 8@{original_size}",
-                aarch64: "8@{task_id} 1@{kind:w} 8@{size} 8@{original_size}",
-                semaphore = const 0,
-                task_id = in(reg) task_id,
-                kind = in(reg) kind as u32,
-                size = in(reg) size,
-                original_size = in(reg) original_size,
-            );
-        }
+    pub(super) fn task_start(_task_id: u64, _kind: u8, _size: usize, _original_size: usize) {
+        // unsafe {
+        //     call_probe!(
+        //         "task-start",
+        //         x86_64: "8@{task_id:r} 1@{kind:l} 8@{size} 8@{original_size}",
+        //         aarch64: "8@{task_id} 1@{kind:w} 8@{size} 8@{original_size}",
+        //         semaphore = const 0,
+        //         task_id = in(reg) task_id,
+        //         kind = in(reg) kind as u32,
+        //         size = in(reg) size,
+        //         original_size = in(reg) original_size,
+        //     );
+        // }
     }
 
     #[inline(always)]
@@ -195,85 +195,85 @@ cfg_rt!(
     }
 
     #[inline(always)]
-    pub(super) fn task_poll_end(task_id: u64) {
-        unsafe {
-            call_probe!(
-                "task-poll-end",
-                x86_64: "8@{task_id:r}",
-                aarch64: "8@{task_id}",
-                semaphore = const 0,
-                task_id = in(reg) task_id,
-            );
-        }
+    pub(super) fn task_poll_end(_task_id: u64) {
+        // unsafe {
+        //     call_probe!(
+        //         "task-poll-end",
+        //         x86_64: "8@{task_id:r}",
+        //         aarch64: "8@{task_id}",
+        //         semaphore = const 0,
+        //         task_id = in(reg) task_id,
+        //     );
+        // }
     }
 
     #[inline(always)]
-    pub(super) fn task_terminate(task_id: u64, reason: u8) {
-        unsafe {
-            call_probe!(
-                "task-terminate",
-                x86_64: "8@{task_id:r} 1@{reason:l}",
-                aarch64: "8@{task_id} 1@{reason:w}",
-                semaphore = const 0,
-                task_id = in(reg) task_id,
-                reason = in(reg) reason as u32,
-            );
-        }
-    }
-
-    // `inline(always)` is ok here since wakers are polymorphised.
-    #[inline(always)]
-    pub(crate) fn waker_clone(task_id: u64) {
-        unsafe {
-            call_probe!(
-                "waker-clone",
-                x86_64: "8@{task_id:r}",
-                aarch64: "8@{task_id}",
-                semaphore = const 0,
-                task_id = in(reg) task_id,
-            );
-        }
+    pub(super) fn task_terminate(_task_id: u64, _reason: u8) {
+        // unsafe {
+        //     call_probe!(
+        //         "task-terminate",
+        //         x86_64: "8@{task_id:r} 1@{reason:l}",
+        //         aarch64: "8@{task_id} 1@{reason:w}",
+        //         semaphore = const 0,
+        //         task_id = in(reg) task_id,
+        //         reason = in(reg) reason as u32,
+        //     );
+        // }
     }
 
     // `inline(always)` is ok here since wakers are polymorphised.
     #[inline(always)]
-    pub(crate) fn waker_drop(task_id: u64) {
-        unsafe {
-            call_probe!(
-                "waker-drop",
-                x86_64: "8@{task_id:r}",
-                aarch64: "8@{task_id}",
-                semaphore = const 0,
-                task_id = in(reg) task_id,
-            );
-        }
+    pub(crate) fn waker_clone(_task_id: u64) {
+        // unsafe {
+        //     call_probe!(
+        //         "waker-clone",
+        //         x86_64: "8@{task_id:r}",
+        //         aarch64: "8@{task_id}",
+        //         semaphore = const 0,
+        //         task_id = in(reg) task_id,
+        //     );
+        // }
     }
 
     // `inline(always)` is ok here since wakers are polymorphised.
     #[inline(always)]
-    pub(crate) fn waker_wake(task_id: u64) {
-        unsafe {
-            call_probe!(
-                "waker-wake",
-                x86_64: "8@{task_id:r}",
-                aarch64: "8@{task_id}",
-                semaphore = const 0,
-                task_id = in(reg) task_id,
-            );
-        }
+    pub(crate) fn waker_drop(_task_id: u64) {
+        // unsafe {
+        //     call_probe!(
+        //         "waker-drop",
+        //         x86_64: "8@{task_id:r}",
+        //         aarch64: "8@{task_id}",
+        //         semaphore = const 0,
+        //         task_id = in(reg) task_id,
+        //     );
+        // }
+    }
+
+    // `inline(always)` is ok here since wakers are polymorphised.
+    #[inline(always)]
+    pub(crate) fn waker_wake(_task_id: u64) {
+        // unsafe {
+        //     call_probe!(
+        //         "waker-wake",
+        //         x86_64: "8@{task_id:r}",
+        //         aarch64: "8@{task_id}",
+        //         semaphore = const 0,
+        //         task_id = in(reg) task_id,
+        //     );
+        // }
     }
 );
 
 #[inline(always)]
 pub(crate) fn trace_root() {
-    unsafe {
-        call_probe!(
-            "trace-root",
-            x86_64: "",
-            aarch64: "",
-            semaphore = const 0,
-        );
-    }
+    // unsafe {
+    //     call_probe!(
+    //         "trace-root",
+    //         x86_64: "",
+    //         aarch64: "",
+    //         semaphore = const 0,
+    //     );
+    // }
 }
 
 std::arch::global_asm!(
