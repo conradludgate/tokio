@@ -173,11 +173,16 @@ impl Barrier {
         let local_gen = lock.generation_id;
         lock.count += 1;
         if lock.count < self.num_threads {
-            // We need a while loop to guard against spurious wakeups.
+            // We need a loop to guard against spurious wakeups.
             // https://en.wikipedia.org/wiki/Spurious_wakeup
-            while local_gen == lock.generation_id {
+            loop {
                 let (guard, timeout_result) = self.cvar.wait_timeout(lock, timeout).unwrap();
                 lock = guard;
+
+                if local_gen != lock.generation_id {
+                    break;
+                }
+
                 if timeout_result.timed_out() {
                     return None;
                 }
