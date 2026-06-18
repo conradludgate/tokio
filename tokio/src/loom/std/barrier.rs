@@ -184,6 +184,9 @@ impl Barrier {
                 }
 
                 if timeout_result.timed_out() {
+                    debug_assert!(lock.count > 0);
+                    lock.count -= 1;
+
                     return None;
                 }
             }
