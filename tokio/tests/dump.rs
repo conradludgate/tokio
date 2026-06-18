@@ -202,3 +202,43 @@ fn notified_during_tracing() {
         );
     });
 }
+
+/// Regression test for the trace-barrier `wait_timeout` count leak.
+///
+/// On timeout, the buggy `wait_timeout` failed to release the participant count
+/// it had claimed, so repeated timeouts eventually elected a spurious leader
+/// that traced a task another worker was still polling, aborting the process.
+#[test]
+fn dump_with_wedged_worker_does_not_abort_runtime() {
+    let rt = runtime::Builder::new_multi_thread()
+        .enable_all()
+        .worker_threads(4)
+        .build()
+        .unwrap();
+
+    // Block one worker so only 3 of 4 ever reach the barrier.
+    rt.spawn(async {
+        std::thread::sleep(Duration::from_secs(3600));
+    });
+
+    // Keep the healthy workers mid-poll during the barrier rounds.
+    for _ in 0..12 {
+        rt.spawn(async {
+            loop {
+                std::thread::sleep(Duration::from_micros(20));
+                tokio::task::yield_now().await;
+            }
+        });
+    }
+
+    // A dump can't complete while a worker is blocked, so fire and forget; it
+    // keeps the workers rendezvousing at the barrier round after round.
+    let handle = rt.handle().clone();
+    rt.spawn(async move {
+        let _ = handle.dump().await;
+    });
+
+    // Before the fix, the spurious-leader abort fires within ~1s.
+    std::thread::sleep(Duration::from_secs(2));
+    rt.shutdown_background();
+}
