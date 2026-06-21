@@ -25,12 +25,13 @@ const SAMPLES: usize = 100_000;
 /// "busy". Longer polls mean workers check the injector less often.
 const BUSY_POLL: Duration = Duration::from_micros(100);
 
-fn rt() -> Runtime {
-    runtime::Builder::new_multi_thread()
-        .worker_threads(WORKERS)
-        .enable_all()
-        .build()
-        .unwrap()
+fn rt(global_queue_interval: Option<u32>) -> Runtime {
+    let mut b = runtime::Builder::new_multi_thread();
+    b.worker_threads(WORKERS).enable_all();
+    if let Some(n) = global_queue_interval {
+        b.global_queue_interval(n);
+    }
+    b.build().unwrap()
 }
 
 fn report(name: &str, mut lat: Vec<u64>) {
@@ -47,7 +48,7 @@ fn report(name: &str, mut lat: Vec<u64>) {
 
 /// Baseline: spawn+await from a task already running on a worker (local queue).
 fn on_worker() {
-    let rt = rt();
+    let rt = rt(None);
     let lat = rt.block_on(async {
         tokio::spawn(async {
             for _ in 0..WARMUP {
@@ -69,8 +70,8 @@ fn on_worker() {
 
 /// Spawn+await from the block_on thread (not a worker), so the task goes through
 /// the injector queue. `busy` saturates every worker with a long-polling loop.
-fn off_runtime(busy: bool) {
-    let rt = rt();
+fn off_runtime(busy: bool, gqi: Option<u32>) {
+    let rt = rt(gqi);
     if busy {
         for _ in 0..WORKERS {
             rt.spawn(async {
@@ -101,11 +102,19 @@ fn off_runtime(busy: bool) {
         });
         lat.push(s.elapsed().as_nanos() as u64);
     }
-    report(if busy { "off_runtime_busy" } else { "off_runtime_idle" }, lat);
+    let label = match (busy, gqi) {
+        (false, None) => "off_idle",
+        (true, None) => "off_busy",
+        (false, Some(_)) => "off_idle gqi=1",
+        (true, Some(_)) => "off_busy gqi=1",
+    };
+    report(label, lat);
 }
 
 fn main() {
     on_worker();
-    off_runtime(false);
-    off_runtime(true);
+    off_runtime(false, None);
+    off_runtime(true, None);
+    off_runtime(false, Some(1));
+    off_runtime(true, Some(1));
 }
