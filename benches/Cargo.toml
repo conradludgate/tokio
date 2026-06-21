@@ -106,5 +106,15 @@ name = "remote_spawn"
 path = "remote_spawn.rs"
 harness = false
 
+[[bench]]
+name = "inject_latency"
+path = "inject_latency.rs"
+harness = false
+
+[[bench]]
+name = "inject_latency_dist"
+path = "inject_latency_dist.rs"
+harness = false
+
 [lints]
 workspace = true
