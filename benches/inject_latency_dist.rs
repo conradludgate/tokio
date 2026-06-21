@@ -36,6 +36,10 @@ enum Load {
     Idle,
     Saturated,
     Loaded,
+    /// One pure-yield task per worker: keeps every worker awake (so a remote
+    /// schedule never has to unpark a parked worker) at the cost of burning the
+    /// cores. A userspace-only attempt at the idle-wakeup latency.
+    HotSpin,
 }
 
 fn rt(global_queue_interval: Option<u32>) -> Runtime {
@@ -124,6 +128,16 @@ fn off_runtime(load: Load, gqi: Option<u32>) {
             }
             std::thread::sleep(Duration::from_millis(100));
         }
+        Load::HotSpin => {
+            for _ in 0..WORKERS {
+                rt.spawn(async {
+                    loop {
+                        tokio::task::yield_now().await;
+                    }
+                });
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
     }
 
     for _ in 0..WARMUP {
@@ -144,6 +158,7 @@ fn off_runtime(load: Load, gqi: Option<u32>) {
         Load::Idle => "idle",
         Load::Saturated => "saturated",
         Load::Loaded => "loaded",
+        Load::HotSpin => "hot_spin",
     };
     let gqi = match gqi {
         Some(n) => format!(" gqi={n}"),
@@ -155,6 +170,7 @@ fn off_runtime(load: Load, gqi: Option<u32>) {
 fn main() {
     on_worker();
     off_runtime(Load::Idle, None);
+    off_runtime(Load::HotSpin, None);
     off_runtime(Load::Saturated, None);
     off_runtime(Load::Saturated, Some(1));
     off_runtime(Load::Loaded, None);
