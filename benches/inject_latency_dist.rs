@@ -30,12 +30,20 @@ const WARMUP: usize = 10_000;
 const SAMPLES: usize = 100_000;
 /// Long poll duration for the `saturated` regime.
 const BUSY_POLL: Duration = Duration::from_micros(100);
+/// `partial` regime: a few duty-cycled tasks (work then sleep), so the runtime
+/// is lightly loaded and most workers are parked most of the time.
+const PARTIAL_TASKS: usize = 2;
+const PARTIAL_WORK: Duration = Duration::from_micros(20);
+const PARTIAL_IDLE: Duration = Duration::from_micros(100);
 
 #[derive(Clone, Copy)]
 enum Load {
     Idle,
     Saturated,
     Loaded,
+    /// A few duty-cycled tasks: lightly loaded, most workers parked most of the
+    /// time. The realistic "service mostly waiting on IO" case.
+    Partial,
     /// One pure-yield task per worker: keeps every worker awake (so a remote
     /// schedule never has to unpark a parked worker) at the cost of burning the
     /// cores. A userspace-only attempt at the idle-wakeup latency.
@@ -128,6 +136,20 @@ fn off_runtime(load: Load, gqi: Option<u32>) {
             }
             std::thread::sleep(Duration::from_millis(100));
         }
+        Load::Partial => {
+            for _ in 0..PARTIAL_TASKS {
+                rt.spawn(async {
+                    loop {
+                        let s = Instant::now();
+                        while s.elapsed() < PARTIAL_WORK {
+                            cpu_burst(64);
+                        }
+                        tokio::time::sleep(PARTIAL_IDLE).await;
+                    }
+                });
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
         Load::HotSpin => {
             for _ in 0..WORKERS {
                 rt.spawn(async {
@@ -158,6 +180,7 @@ fn off_runtime(load: Load, gqi: Option<u32>) {
         Load::Idle => "idle",
         Load::Saturated => "saturated",
         Load::Loaded => "loaded",
+        Load::Partial => "partial",
         Load::HotSpin => "hot_spin",
     };
     let gqi = match gqi {
@@ -170,6 +193,7 @@ fn off_runtime(load: Load, gqi: Option<u32>) {
 fn main() {
     on_worker();
     off_runtime(Load::Idle, None);
+    off_runtime(Load::Partial, None);
     off_runtime(Load::HotSpin, None);
     off_runtime(Load::Saturated, None);
     off_runtime(Load::Saturated, Some(1));
