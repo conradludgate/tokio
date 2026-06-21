@@ -17,6 +17,10 @@
 //! `harness = false`: plain binary. Run with:
 //!     cargo bench --bench inject_latency_dist
 //!
+//! The `on_worker saturated no-lifo` row (disabling the LIFO slot, to show what
+//! it's worth under load) only runs under `--cfg tokio_unstable`:
+//!     RUSTFLAGS="--cfg tokio_unstable" cargo bench --bench inject_latency_dist
+//!
 //! NOTE: absolute numbers are platform-dependent; run on Linux for figures
 //! comparable to a production runtime. The shape is the point.
 
@@ -50,12 +54,19 @@ enum Load {
     HotSpin,
 }
 
-fn rt(global_queue_interval: Option<u32>) -> Runtime {
+fn rt(global_queue_interval: Option<u32>, disable_lifo: bool) -> Runtime {
     let mut b = runtime::Builder::new_multi_thread();
     b.worker_threads(WORKERS).enable_all();
     if let Some(n) = global_queue_interval {
         b.global_queue_interval(n);
     }
+    // `disable_lifo_slot` is gated behind `--cfg tokio_unstable`.
+    #[cfg(tokio_unstable)]
+    if disable_lifo {
+        b.disable_lifo_slot();
+    }
+    #[cfg(not(tokio_unstable))]
+    let _ = disable_lifo;
     b.build().unwrap()
 }
 
@@ -82,8 +93,8 @@ fn report(name: &str, mut lat: Vec<u64>) {
 /// Baseline: spawn+await from a task already running on a worker (local queue).
 /// With `Load::Saturated`, every worker is also running a long-polling task, so
 /// the local spawn competes with other ready work on the runtime.
-fn on_worker(load: Load) {
-    let rt = rt(None);
+fn on_worker(load: Load, disable_lifo: bool) {
+    let rt = rt(None, disable_lifo);
     if let Load::Saturated = load {
         for _ in 0..WORKERS {
             rt.spawn(async {
@@ -114,18 +125,21 @@ fn on_worker(load: Load) {
         .await
         .unwrap()
     });
-    report(
-        match load {
-            Load::Saturated => "on_worker saturated",
-            _ => "on_worker",
-        },
-        lat,
-    );
+    let base = match load {
+        Load::Saturated => "on_worker saturated",
+        _ => "on_worker",
+    };
+    let label = if disable_lifo {
+        format!("{base} no-lifo")
+    } else {
+        base.to_string()
+    };
+    report(&label, lat);
 }
 
 /// Spawn+await from the block_on thread (not a worker) → through the injector.
 fn off_runtime(load: Load, gqi: Option<u32>) {
-    let rt = rt(gqi);
+    let rt = rt(gqi, false);
     match load {
         Load::Idle => {}
         Load::Saturated => {
@@ -213,8 +227,12 @@ fn off_runtime(load: Load, gqi: Option<u32>) {
 }
 
 fn main() {
-    on_worker(Load::Idle);
-    on_worker(Load::Saturated);
+    on_worker(Load::Idle, false);
+    on_worker(Load::Saturated, false);
+    // LIFO-slot disabled, to show what the slot is buying under load.
+    // Requires `--cfg tokio_unstable`.
+    #[cfg(tokio_unstable)]
+    on_worker(Load::Saturated, true);
     off_runtime(Load::Idle, None);
     off_runtime(Load::Partial, None);
     off_runtime(Load::HotSpin, None);
