@@ -80,8 +80,24 @@ fn report(name: &str, mut lat: Vec<u64>) {
 }
 
 /// Baseline: spawn+await from a task already running on a worker (local queue).
-fn on_worker() {
+/// With `Load::Saturated`, every worker is also running a long-polling task, so
+/// the local spawn competes with other ready work on the runtime.
+fn on_worker(load: Load) {
     let rt = rt(None);
+    if let Load::Saturated = load {
+        for _ in 0..WORKERS {
+            rt.spawn(async {
+                loop {
+                    let start = Instant::now();
+                    while start.elapsed() < BUSY_POLL {
+                        cpu_burst(256);
+                    }
+                    tokio::task::yield_now().await;
+                }
+            });
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
     let lat = rt.block_on(async {
         tokio::spawn(async {
             for _ in 0..WARMUP {
@@ -98,7 +114,13 @@ fn on_worker() {
         .await
         .unwrap()
     });
-    report("on_worker", lat);
+    report(
+        match load {
+            Load::Saturated => "on_worker saturated",
+            _ => "on_worker",
+        },
+        lat,
+    );
 }
 
 /// Spawn+await from the block_on thread (not a worker) → through the injector.
@@ -191,7 +213,8 @@ fn off_runtime(load: Load, gqi: Option<u32>) {
 }
 
 fn main() {
-    on_worker();
+    on_worker(Load::Idle);
+    on_worker(Load::Saturated);
     off_runtime(Load::Idle, None);
     off_runtime(Load::Partial, None);
     off_runtime(Load::HotSpin, None);
